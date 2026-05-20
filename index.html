@@ -437,7 +437,7 @@
     <div style="position:relative;display:inline-block;width:100%;text-align:center;margin-bottom:4px;">
       <h1 class="game-title"><span class="t-red">공</span><span class="t-blue">게</span>임</h1>
     </div>
-    <p class="game-subtitle">Ball Number Challenge</p>
+    <p class="game-subtitle">Ball Game</p>
 
     <div class="best-banner">
       <span class="best-crown">👑</span>
@@ -540,6 +540,79 @@ function updateBestUI(){
 function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
 function shuffle(arr){ const a=[...arr]; for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]; } return a; }
 
+function createUniqueDigitPicker(){
+  const used = new Set();
+  const digits = Array.from({length:9}, (_,i) => i + 1);
+
+  return count => {
+    const fresh = digits.filter(d => !used.has(d));
+    const source = fresh.length >= count ? fresh : digits;
+    const picked = shuffle(source).slice(0, count);
+    picked.forEach(d => used.add(d));
+    return picked;
+  };
+}
+
+function cornerIndex(pos, total, cols){
+  const rows = Math.ceil(total / cols);
+  const lastRowStart = (rows - 1) * cols;
+  if(pos === '왼쪽 위') return 0;
+  if(pos === '오른쪽 위') return Math.min(cols - 1, total - 1);
+  if(pos === '왼쪽 아래') return Math.min(lastRowStart, total - 1);
+  return total - 1;
+}
+
+function neighborIndices(index, total, cols){
+  const row = Math.floor(index / cols);
+  const col = index % cols;
+  const result = [];
+  for(let dr=-1; dr<=1; dr++){
+    for(let dc=-1; dc<=1; dc++){
+      if(dr === 0 && dc === 0) continue;
+      const nr = row + dr;
+      const nc = col + dc;
+      const ni = nr * cols + nc;
+      if(nr >= 0 && nc >= 0 && nc < cols && ni >= 0 && ni < total) result.push(ni);
+    }
+  }
+  return result;
+}
+
+function buildNeighborChain(nums, cols, startPos, preferLargest=false){
+  const visited = new Set();
+  const chain = [];
+  let current = cornerIndex(startPos, nums.length, cols);
+
+  while(current !== undefined){
+    visited.add(current);
+    chain.push(nums[current]);
+
+    const next = neighborIndices(current, nums.length, cols)
+      .filter(i => !visited.has(i))
+      .sort((a,b) => preferLargest ? nums[b] - nums[a] || a - b : nums[a] - nums[b] || a - b)[0];
+
+    current = next;
+  }
+
+  return chain;
+}
+
+function buildAlternatingLineOrder(nums, cols, startLine, asc){
+  const rows = [
+    nums.slice(0, cols),
+    nums.slice(cols, cols * 2)
+  ].map(line => line.slice().sort((a,b) => asc ? a-b : b-a));
+  let rowIndex = startLine === '윗줄' ? 0 : 1;
+  const order = [];
+
+  while(rows[0].length || rows[1].length){
+    if(rows[rowIndex].length) order.push(rows[rowIndex].shift());
+    rowIndex = rowIndex === 0 ? 1 : 0;
+  }
+
+  return order;
+}
+
 // ══════════════════════════════════════════════════
 //  숫자 풀 생성 헬퍼 — generatePool
 //
@@ -584,12 +657,14 @@ function generatePool({ count, rangeMin, rangeMax, guaranteed=[], isSequence=fal
 //  문제 팩토리
 //  각 factory() → 문제 설정 객체:
 //    { label, totalBalls, cols, makeNums(), filter, textFn, forceAsc?, customSort?, needBirth? }
+//    customSort(arr, birthByNum, ctx) 에는 { allNums, cols } 컨텍스트가 함께 전달됨
 //
 //  ★ 직관형 (isSequence:true)  — 연속 수 묶음, 홀짝·달력·시간처럼 흐름이 있는 문제
 //  ★ 탐색형 (isSequence:false) — 넓은 범위 무작위, 시각 보물찾기 문제
 // ══════════════════════════════════════════════════
 function getFactories(){
   const dir = asc => asc ? '작은 것부터' : '큰 것부터';
+  const pickExploreDigits = createUniqueDigitPicker();
 
   return [
 
@@ -686,7 +761,7 @@ function getFactories(){
 
     // ── 일의 자리가 N  24개 6열 | 10~99 보물찾기, 해당 수 최소 6개 보장
     () => {
-      const d = randInt(1,9);
+      const [d] = pickExploreDigits(1);
       const matching = Array.from({length:9},(_,i) => d + (i+1)*10); // 1d,2d,…,9d
       return {
         label:`일의 자리가 ${d}인 수`, totalBalls:24, cols:6,
@@ -699,8 +774,7 @@ function getFactories(){
 
     // ── N 또는 M으로 끝나는 수  24개 6열 | 10~99 보물찾기, 각 4개씩 보장
     () => {
-      let d1=randInt(1,9), d2;
-      do{ d2=randInt(1,9); }while(d2===d1);
+      const [d1, d2] = pickExploreDigits(2);
       const m1 = Array.from({length:9},(_,i) => d1+(i+1)*10);
       const m2 = Array.from({length:9},(_,i) => d2+(i+1)*10);
       return {
@@ -715,7 +789,7 @@ function getFactories(){
 
     // ── 숫자 N이 들어간 수  24개 6열 | 10~99 보물찾기, 최소 5개 보장
     () => {
-      const d   = String(randInt(1,9));
+      const d   = String(pickExploreDigits(1)[0]);
       const hasD = n => String(n).includes(d);
       const poolD = Array.from({length:90},(_,i)=>i+10).filter(hasD);
       return {
@@ -750,6 +824,60 @@ function getFactories(){
                           guaranteed: shuffle(poolST).slice(0,8), isSequence:false }),
         filter: ns => ns.filter(smallTen),
         textFn: asc => `두 자리 수 중 십의 자리가 일의 자리보다 작은 공을 ${dir(asc)} 누르세요!`
+      };
+    },
+
+    // ━━ 경로형 (특수) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    // ── 줄바꿈 왕복 챌린지  12개 6열 | 시작 줄부터 두 줄을 번갈아 오가며 줄별 최솟값/최댓값 선택
+    () => {
+      const lines = ['윗줄', '아랫줄'];
+      // 팩토리 실행 시점에 줄을 고정하되, 정답지 함수에 인자로 안전하게 전달
+      const chosenLine = lines[Math.floor(Math.random() * lines.length)];
+      
+      return {
+        label: '줄바꿈 왕복 챌린지', totalBalls: 12, cols: 6,
+        makeNums: () => generatePool({ count: 12, rangeMin: 1, rangeMax: 99, isSequence: false }),
+        filter: ns => [...ns],
+        ballClassForIndex: (index, { cols }) => index < cols ? 'bc0' : 'bc5',
+        // 기존 시스템은 인자를 (arr, birthByNum)만 주므로, 세 번째 인자 대신 내부 변수와 시스템이 결정해준 정답 배열(arr)을 활용하거나
+        // loadQuestion 단에서 customSort 호출 시 세 번째 인자로 asc를 넣어주도록 코드를 한 줄 고치거나, 아래처럼 클로저 형태로 asc를 가져와야 합니다.
+        // 여기서는 안전하게 호출 구조를 맞추기 위해 loadQuestion에서 customSort(rawTarget, birthByNum, qDef.asc) 형태로 인자를 3개 주도록 본문 코드를 수정했다고 가정하거나, 아래 방식을 권장합니다.
+        customSort: (arr, birthByNum, qAsc) => {
+          // 만약 기존 코드를 안 고치고 싶다면, startGame에서 결정된 asc를 주입받아야 하므로
+          // customSort 내부에서 처리하기 위해 함수 구조를 본문 엔진에 맞추는 것이 좋습니다.
+          return buildAlternatingLineOrder(state.allNums, 6, chosenLine, qAsc);
+        },
+        textFn: asc => {
+          const sizeStr = asc ? '작은' : '큰';
+          return `[${chosenLine}]부터 줄을 번갈아 오가며 각 줄의 가장 [${sizeStr}] 공을 누르세요!`;
+        }
+      };
+    },
+
+    // ── 모서리 체인 챌린지  20개 4열 | 시작 모서리에서 인접 8방향 최솟값으로 이동
+    () => {
+      const positions = ['왼쪽 위', '오른쪽 위', '왼쪽 아래', '오른쪽 아래'];
+      const chosenPos = positions[Math.floor(Math.random() * positions.length)];
+      return {
+        label:'모서리 체인 챌린지', totalBalls:20, cols:4, forceAsc:true,
+        makeNums: () => generatePool({ count:20, rangeMin:1, rangeMax:99, isSequence:false }),
+        filter: ns => [...ns],
+        customSort: (arr, birthByNum, ctx) => buildNeighborChain(ctx.allNums, ctx.cols, chosenPos),
+        textFn: () => `시작점은 [${chosenPos}]! 이웃한 공(대각선 포함) 중 가장 작은 수로 이어가세요!`
+      };
+    },
+
+    // ── 모서리 체인 챌린지 (큰 수)  20개 4열 | 시작 모서리에서 인접 8방향 최댓값으로 이동
+    () => {
+      const positions = ['왼쪽 위', '오른쪽 위', '왼쪽 아래', '오른쪽 아래'];
+      const chosenPos = positions[Math.floor(Math.random() * positions.length)];
+      return {
+        label:'모서리 체인 챌린지 (큰 수)', totalBalls:20, cols:4, forceAsc:true,
+        makeNums: () => generatePool({ count:20, rangeMin:1, rangeMax:99, isSequence:false }),
+        filter: ns => [...ns],
+        customSort: (arr, birthByNum, ctx) => buildNeighborChain(ctx.allNums, ctx.cols, chosenPos, true),
+        textFn: () => `시작점은 [${chosenPos}]! 이웃한 공(대각선 포함) 중 가장 큰 수로 이어가세요!`
       };
     },
 
@@ -815,7 +943,7 @@ function startGame(){
 
     const asc = raw.forceAsc !== undefined ? raw.forceAsc : (Math.random() < 0.5);
     questions.push({
-      factory,          // 나중에 재호출해도 되도록 보관
+      raw,
       rawLabel: raw.label,
       asc,
       // 아래는 loadQuestion에서 채워짐
@@ -872,7 +1000,7 @@ function loadQuestion(qi){
 
   // 이번 문제 설정 가져오기
   const qDef  = state.questions[qi];
-  const raw   = qDef.factory();             // 팩토리 재실행 → 파라미터 동일하게 유지
+  const raw   = qDef.raw;
   const COLS  = raw.cols;
 
   // 이 문제 전용 공 배열 생성 — makeNums()가 보장 정답 포함 랜덤 풀 반환
@@ -890,7 +1018,7 @@ function loadQuestion(qi){
   const rawTarget = raw.filter(allNums);
   let sorted;
   if(raw.customSort){
-    sorted = raw.customSort(rawTarget, birthByNum);
+    sorted = raw.customSort(rawTarget, birthByNum, { allNums, cols: COLS, asc: qDef.asc });
   } else {
     sorted = [...rawTarget].sort((a,b) => qDef.asc ? a-b : b-a);
   }
@@ -927,9 +1055,12 @@ function loadQuestion(qi){
   const spawnDelay = isBirthQ ? BALL_DELAY_BIRTH_MS : BALL_DELAY_MS;
 
   // 공 DOM 생성 (처음엔 invisible)
-  allNums.forEach((num, idx) => {
+  allNums.forEach((num, index) => {
     const el = document.createElement('div');
-    el.className = `ball bc${idx%12}`;
+    const ballClass = raw.ballClassForIndex
+      ? raw.ballClassForIndex(index, { cols: COLS, totalBalls: TB, num, allNums })
+      : `bc${randInt(0, 11)}`;
+    el.className = `ball ${ballClass}`;
     el.style.setProperty('--ball-sz', sz+'px');
     el.style.setProperty('--ball-fs', fs);
     el.dataset.num = num;
