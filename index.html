@@ -869,7 +869,7 @@ function getFactories(){
         // 작은 수 일 때는 '작은 수로', 큰 수 일 때는 '큰 수로' 문구가 동적 변경됩니다.
         textFn: asc => {
           const sizeStr = asc ? '작은 수로' : '큰 수로';
-          return `시작점은 [${chosenPos}]! 이웃한 공(대각선 포함) 중 가장 [${sizeStr}] 이어가세요!`;
+          return `시작점은 ${chosenPos}! 이웃한 공(대각선 포함) 중 가장 ${sizeStr} 이어가세요!`;
         }
       };
     },
