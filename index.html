@@ -686,10 +686,10 @@ function getFactories(){
       textFn: asc => `홀수를 ${dir(asc)} 누르세요!`
     }),
 
-    // ── 한 자리 수  12개 4열 | 1~9 고정 + 10~19 보충 (연속 12개 / 1~19)
+    // ── 한 자리 수  12개 4열 | 1~9 고정 + 10~19 보충 (보물찾기 모드로 변경하여 1~9 무조건 포함 보장)
     () => ({
       label:'한 자리 수', totalBalls:12, cols:4,
-      makeNums: () => generatePool({ count:12, rangeMin:1, rangeMax:19, isSequence:true }),
+      makeNums: () => generatePool({ count:12, rangeMin:1, rangeMax:19, guaranteed: [1,2,3,4,5,6,7,8,9], isSequence:false }),
       filter: ns => ns.filter(n => n>=1 && n<=9),
       textFn: asc => `한 자리 수(1~9)인 공을 ${dir(asc)} 누르세요!`
     }),
@@ -832,7 +832,6 @@ function getFactories(){
     // ── 줄바꿈 왕복 챌린지  12개 6열 | 시작 줄부터 두 줄을 번갈아 오가며 줄별 최솟값/최댓값 선택
     () => {
       const lines = ['윗줄', '아랫줄'];
-      // 팩토리 실행 시점에 줄을 고정하되, 정답지 함수에 인자로 안전하게 전달
       const chosenLine = lines[Math.floor(Math.random() * lines.length)];
       
       return {
@@ -840,44 +839,38 @@ function getFactories(){
         makeNums: () => generatePool({ count: 12, rangeMin: 1, rangeMax: 99, isSequence: false }),
         filter: ns => [...ns],
         ballClassForIndex: (index, { cols }) => index < cols ? 'bc0' : 'bc5',
-        // 기존 시스템은 인자를 (arr, birthByNum)만 주므로, 세 번째 인자 대신 내부 변수와 시스템이 결정해준 정답 배열(arr)을 활용하거나
-        // loadQuestion 단에서 customSort 호출 시 세 번째 인자로 asc를 넣어주도록 코드를 한 줄 고치거나, 아래처럼 클로저 형태로 asc를 가져와야 합니다.
-        // 여기서는 안전하게 호출 구조를 맞추기 위해 loadQuestion에서 customSort(rawTarget, birthByNum, qDef.asc) 형태로 인자를 3개 주도록 본문 코드를 수정했다고 가정하거나, 아래 방식을 권장합니다.
+        // 세 번째 인자로 들어오는 qAsc(질문의 대소 기준)를 buildAlternatingLineOrder에 그대로 전달합니다.
         customSort: (arr, birthByNum, qAsc) => {
-          // 만약 기존 코드를 안 고치고 싶다면, startGame에서 결정된 asc를 주입받아야 하므로
-          // customSort 내부에서 처리하기 위해 함수 구조를 본문 엔진에 맞추는 것이 좋습니다.
           return buildAlternatingLineOrder(state.allNums, 6, chosenLine, qAsc);
         },
+        // asc가 true일 때 '작은', false일 때 '큰'으로 텍스트를 일치시킵니다.
         textFn: asc => {
           const sizeStr = asc ? '작은' : '큰';
-          return `[${chosenLine}]부터 줄을 번갈아 오가며 각 줄의 가장 [${sizeStr}] 공을 누르세요!`;
+          return `${chosenLine}부터 줄을 번갈아 오가며 각 줄의 가장 ${sizeStr} 공을 누르세요!`;
         }
       };
     },
 
-    // ── 모서리 체인 챌린지  20개 4열 | 시작 모서리에서 인접 8방향 최솟값으로 이동
+    // ── 모서리 체인 챌린지  20개 4열 | 무작위로 작은 수(asc) 또는 큰 수(desc) 경로 체인 생성
     () => {
       const positions = ['왼쪽 위', '오른쪽 위', '왼쪽 아래', '오른쪽 아래'];
       const chosenPos = positions[Math.floor(Math.random() * positions.length)];
+      
       return {
-        label:'모서리 체인 챌린지', totalBalls:20, cols:4, forceAsc:true,
-        makeNums: () => generatePool({ count:20, rangeMin:1, rangeMax:99, isSequence:false }),
+        label: '모서리 체인 챌린지', totalBalls: 20, cols: 4,
+        // forceAsc를 제거하여 게임 엔진이 작은 수(true)/큰 수(false)를 무작위로 결정하게 합니다.
+        makeNums: () => generatePool({ count: 20, rangeMin: 1, rangeMax: 99, isSequence: false }),
         filter: ns => [...ns],
-        customSort: (arr, birthByNum, ctx) => buildNeighborChain(ctx.allNums, ctx.cols, chosenPos),
-        textFn: () => `시작점은 [${chosenPos}]! 이웃한 공(대각선 포함) 중 가장 작은 수로 이어가세요!`
-      };
-    },
-
-    // ── 모서리 체인 챌린지 (큰 수)  20개 4열 | 시작 모서리에서 인접 8방향 최댓값으로 이동
-    () => {
-      const positions = ['왼쪽 위', '오른쪽 위', '왼쪽 아래', '오른쪽 아래'];
-      const chosenPos = positions[Math.floor(Math.random() * positions.length)];
-      return {
-        label:'모서리 체인 챌린지 (큰 수)', totalBalls:20, cols:4, forceAsc:true,
-        makeNums: () => generatePool({ count:20, rangeMin:1, rangeMax:99, isSequence:false }),
-        filter: ns => [...ns],
-        customSort: (arr, birthByNum, ctx) => buildNeighborChain(ctx.allNums, ctx.cols, chosenPos, true),
-        textFn: () => `시작점은 [${chosenPos}]! 이웃한 공(대각선 포함) 중 가장 큰 수로 이어가세요!`
+        // 엔진에서 결정된 qAsc 값에 맞춰 큰 수 우선 여부(preferLargest)를 결정합니다.
+        customSort: (arr, birthByNum, qAsc) => {
+          const preferLargest = !qAsc; // qAsc가 false(큰 것부터)이면 preferLargest는 true가 됩니다.
+          return buildNeighborChain(state.allNums, 4, chosenPos, preferLargest);
+        },
+        // 작은 수 일 때는 '작은 수로', 큰 수 일 때는 '큰 수로' 문구가 동적 변경됩니다.
+        textFn: asc => {
+          const sizeStr = asc ? '작은 수로' : '큰 수로';
+          return `시작점은 [${chosenPos}]! 이웃한 공(대각선 포함) 중 가장 [${sizeStr}] 이어가세요!`;
+        }
       };
     },
 
